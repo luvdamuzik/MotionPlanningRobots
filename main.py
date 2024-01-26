@@ -6,6 +6,9 @@ from editor import Editor
 from layout import Layout
 from settings import *
 
+import tkinter as tk
+from tkinter import messagebox
+
 # Initialize pygame
 pygame.init()
 
@@ -44,9 +47,7 @@ class Game:
     def toggle(self):
         self.editor_active = not self.editor_active
 
-    def switch(self, layers=None):
-        self.transition.active = True
-
+    def switch(self, layers=None, layout=False):
         if layers:
             if layers[1]:
                 grid = layers[1]
@@ -66,10 +67,17 @@ class Game:
             layers = layers[0]
 
             if grid and start_coords and end_coords:
+                self.transition.active = True
                 self.layout = Layout(layers, grid, start_coords, end_coords, self.switch, {
                     'wall': self.wall_image,
                     'table': self.table_image
                 })
+        else:
+            if layout:
+                self.transition.active = True
+            else:
+                self.transition.active = False
+
 
     def run(self):
         while True:

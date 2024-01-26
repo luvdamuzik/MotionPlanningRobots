@@ -1,3 +1,4 @@
+import json
 import sys
 
 from pygame.image import load
@@ -9,6 +10,12 @@ from menu import Menu
 from settings import *
 from support import *
 from timer import *
+
+import tkinter as tk
+from tkinter import messagebox
+
+from pathlib import Path
+import os, os.path
 
 
 class Editor:
@@ -31,7 +38,7 @@ class Editor:
 
         # selection
         self.selection_index = 2
-        self.last_selected_cell = None
+        self.previous_index = None
 
         # menu
         self.menu = Menu()
@@ -40,6 +47,9 @@ class Editor:
         self.canvas_objects = pygame.sprite.Group()
         self.object_drag_active = False
         self.object_timer = Timer(400)
+
+        # saves
+        self.num_of_saves = len(os.listdir('saves'))
 
     # support functions
     def get_current_cell(self, obj=None):
@@ -83,61 +93,97 @@ class Editor:
             if sprite.rect.collidepoint(mouse_pos()):
                 return sprite
 
-    def create_grid(self):
-        # add objects to the tiles
-        for tile in self.canvas_data.values():
-            tile.objects = []
+    def create_grid(self, save=False):
+        try:
+            # add objects to the tiles
+            for tile in self.canvas_data.values():
+                tile.objects = []
 
-        for obj in self.canvas_objects:
-            current_cell = self.get_current_cell(obj)
-            offset = vector(obj.distance_to_origin) - (vector(current_cell) * TILE_SIZE)
+            for obj in self.canvas_objects:
+                current_cell = self.get_current_cell(obj)
+                offset = vector(obj.distance_to_origin) - (vector(current_cell) * TILE_SIZE)
 
-            if current_cell in self.canvas_data:  # tile exists already
-                self.canvas_data[current_cell].add_id(obj.tile_id, offset)
-            else:  # no tile exists yet
-                self.canvas_data[current_cell] = CanvasTile(obj.tile_id, offset)
+                if current_cell in self.canvas_data:  # tile exists already
+                    self.canvas_data[current_cell].add_id(obj.tile_id, offset)
+                else:  # no tile exists yet
+                    self.canvas_data[current_cell] = CanvasTile(obj.tile_id, offset)
 
-        # create an empty grid
-        layers = {
-            'wall': {},
-            'obstacle': {},
-            'robot': {},
-        }
+            # create an empty grid
+            layers = {
+                'wall': {},
+                'obstacle': {},
+                'robot': {},
+            }
 
-        # grid offset
-        left = sorted(self.canvas_data.keys(), key=lambda tile: tile[0])[0][0]
-        right = sorted(self.canvas_data.keys(), key=lambda tile: tile[0], reverse=True)[0][0]
-        top = sorted(self.canvas_data.keys(), key=lambda tile: tile[1])[0][1]
-        bottom = sorted(self.canvas_data.keys(), key=lambda tile: tile[1], reverse=True)[0][1]
+            if self.canvas_data == {}:
+                raise ValueError("Nothing found.")
 
-        grid = [[1 for _ in range(right - left + 1)] for _ in range(bottom - top + 1)]
-        start_coords = []
-        end_coords = []
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Error", str(e))
+            return
+        else:
+            try:
+                # grid offset
+                left = sorted(self.canvas_data.keys(), key=lambda tile: tile[0])[0][0]
+                right = sorted(self.canvas_data.keys(), key=lambda tile: tile[0], reverse=True)[0][0]
+                top = sorted(self.canvas_data.keys(), key=lambda tile: tile[1])[0][1]
+                bottom = sorted(self.canvas_data.keys(), key=lambda tile: tile[1], reverse=True)[0][1]
 
-        # fill the grid
-        for tile_pos, tile in self.canvas_data.items():
-            row_adjusted = tile_pos[1] - top
-            col_adjusted = tile_pos[0] - left
-            x = col_adjusted * TILE_SIZE
-            y = row_adjusted * TILE_SIZE
-            # print(row_adjusted, col_adjusted, x, y)
+                grid = [[1 for _ in range(right - left + 1)] for _ in range(bottom - top + 1)]
+                start_coords = []
+                end_coords = []
 
-            if tile.has_wall:
-                layers['wall'][(x, y)] = tile.has_wall
-                grid[row_adjusted][col_adjusted] = 0
+                # fill the grid
+                for tile_pos, tile in self.canvas_data.items():
+                    row_adjusted = tile_pos[1] - top
+                    col_adjusted = tile_pos[0] - left
+                    x = col_adjusted * TILE_SIZE
+                    y = row_adjusted * TILE_SIZE
 
-            if tile.has_obstacle:
-                layers['obstacle'][(x, y)] = tile.has_obstacle
-                end_coords.append((row_adjusted, col_adjusted))
-                grid[row_adjusted][col_adjusted] = 0
+                    if tile.has_wall:
+                        layers['wall'][(x, y)] = tile.has_wall
+                        grid[row_adjusted][col_adjusted] = 0
 
-            if tile.objects:  # (obj, offset)
-                for obj, offset in tile.objects:
-                    if obj in [key for key, value in EDITOR_DATA.items() if value['style'] == 'robot']:  # robot
-                        layers['robot'][(int(x + offset.x), int(y + offset.y))] = obj
-                        start_coords.append((row_adjusted, col_adjusted))
+                    if tile.has_obstacle:
+                        layers['obstacle'][(x, y)] = tile.has_obstacle
+                        end_coords.append((row_adjusted, col_adjusted))
+                        grid[row_adjusted][col_adjusted] = 0
 
-        return layers, grid, start_coords, end_coords
+                    if tile.objects:  # (obj, offset)
+                        for obj, offset in tile.objects:
+                            if obj in [key for key, value in EDITOR_DATA.items() if value['style'] == 'robot']:  # robot
+                                layers['robot'][(int(x + offset.x), int(y + offset.y))] = obj
+                                start_coords.append((int((x + offset.x) / TILE_SIZE), int((y + offset.y) / TILE_SIZE)))
+
+                if not start_coords and not end_coords:
+                    raise ValueError("No Robots or Tables found.")
+                if not start_coords:
+                    raise ValueError("No Robots Found.")
+                if not end_coords:
+                    raise ValueError("No Tables Found.")
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showerror("Error", str(e))
+                return
+            else:
+                if save:
+                    base = Path('saves')
+                    jsonpath = base / ("save_file_" + str(self.num_of_saves) + ".txt")
+                    base.mkdir(exist_ok=True)
+                    data = {
+                        "grid": grid,
+                        "start": start_coords,
+                        "end": end_coords
+                    }
+                    with open(jsonpath, "w") as outfile:
+                        json.dump(data, outfile)
+                else:
+                    return layers, grid, start_coords, end_coords
 
     # input
     def event_loop(self):
@@ -172,9 +218,9 @@ class Editor:
         # mouse wheel
         if event.type == pygame.MOUSEWHEEL:
             if pygame.key.get_pressed()[pygame.K_LCTRL]:
-                self.origin.y -= event.y * 50
+                self.origin.y -= event.y * TILE_SIZE
             else:
-                self.origin.x -= event.y * 50
+                self.origin.x -= event.y * TILE_SIZE
             for sprite in self.canvas_objects:
                 sprite.pan_pos(self.origin)
 
@@ -191,27 +237,55 @@ class Editor:
                 self.selection_index += 1
             if event.key == pygame.K_LEFT:
                 self.selection_index -= 1
-        self.selection_index = max(2, min(self.selection_index, 18))
+        self.selection_index = max(2, min(self.selection_index, 6))
 
     def menu_click(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and self.menu.rect.collidepoint(mouse_pos()):
+        if event.type == pygame.MOUSEBUTTONDOWN and \
+                (self.menu.rect_bottom.collidepoint(mouse_pos()) or self.menu.rect_top.collidepoint(mouse_pos())):
             new_index = self.menu.click(mouse_pos(), mouse_buttons())
-            self.selection_index = new_index if new_index else self.selection_index
+            # save
+            if new_index == 5:
+                self.previous_index = self.selection_index
+                self.create_grid(True)
+                self.selection_index = self.previous_index
+                self.num_of_saves += 1
+            elif new_index == 6:
+                with open('saves/save_file_0.txt') as load_file:
+                    data = json.load(load_file)
+                self.load(data['grid'], data['start'], data['end'])
+            else:
+                self.selection_index = new_index if new_index else self.selection_index
+
+    def load(self, grid, start_coords, end_coords):
+        for robot in start_coords:
+            CanvasObject(
+                pos=((robot[0] * TILE_SIZE) + self.origin.x,
+                     (robot[1] * TILE_SIZE) + self.origin.y),
+                frames=self.animations[4]['frames'],
+                tile_id=4,
+                origin=self.origin,
+                group=self.canvas_objects)
+
+        for row, _ in enumerate(grid):
+            for col, _ in enumerate(grid[row]):
+                if grid[row][col] == 0 and [row, col] not in end_coords:  # wall
+                    self.canvas_data[(col, row)] = CanvasTile(2)
+                elif grid[row][col] == 0 and [row, col] in end_coords:  # table
+                    self.canvas_data[(col, row)] = CanvasTile(3)
 
     def canvas_add(self):
-        if mouse_buttons()[0] and not self.menu.rect.collidepoint(mouse_pos()) and not self.object_drag_active:
+        if mouse_buttons()[0] and not self.menu.rect_bottom.collidepoint(mouse_pos()) \
+                and not self.menu.rect_top.collidepoint(mouse_pos()) and not self.object_drag_active:
             current_cell = self.get_current_cell()
             if EDITOR_DATA[self.selection_index]['type'] == 'tile':
-                if current_cell != self.last_selected_cell:
-                    if current_cell not in self.canvas_data:
-                        self.canvas_data[current_cell] = CanvasTile(self.selection_index)
-
-                    self.last_selected_cell = current_cell
+                if current_cell not in self.canvas_data:
+                    self.canvas_data[current_cell] = CanvasTile(self.selection_index)
 
             else:  # objects
                 if not self.object_timer.active:
                     CanvasObject(
-                        pos=(self.get_current_cell()[0] * TILE_SIZE, self.get_current_cell()[1] * TILE_SIZE),
+                        pos=((self.get_current_cell()[0] * TILE_SIZE) + self.origin.x,
+                             (self.get_current_cell()[1] * TILE_SIZE) + self.origin.y),
                         frames=self.animations[self.selection_index]['frames'],
                         tile_id=self.selection_index,
                         origin=self.origin,
@@ -219,7 +293,8 @@ class Editor:
                     self.object_timer.activate()
 
     def canvas_remove(self):
-        if mouse_buttons()[2] and not self.menu.rect.collidepoint(mouse_pos()):
+        if mouse_buttons()[2] and not self.menu.rect_bottom.collidepoint(mouse_pos()) and \
+                not self.menu.rect_top.collidepoint(mouse_pos()):
             # delete objects
             selected_object = self.mouse_on_object()
             if selected_object and not self.object_drag_active:
@@ -286,7 +361,7 @@ class Editor:
 
     def preview(self):
         selected_object = self.mouse_on_object()
-        if not self.menu.rect.collidepoint(mouse_pos()):
+        if not self.menu.rect_bottom.collidepoint(mouse_pos()) and not self.menu.rect_top.collidepoint(mouse_pos()):
             if selected_object:
                 rect = selected_object.rect.inflate(10, 10)
                 color = "black"
@@ -309,18 +384,21 @@ class Editor:
 
             else:
                 type_dict = {key: value['type'] for key, value in EDITOR_DATA.items()}
-                surf = self.preview_surfs[self.selection_index].copy()
-                surf.set_alpha(200)
+                if self.selection_index not in (5, 6):
+                    surf = self.preview_surfs[self.selection_index].copy()
+                    surf.set_alpha(200)
 
-                # tile
-                if type_dict[self.selection_index] == 'tile':
-                    current_cell = self.get_current_cell()
-                    rect = surf.get_rect(topleft=self.origin + vector(current_cell) * TILE_SIZE)
-                # object
+                    # tile
+                    if type_dict[self.selection_index] == 'tile':
+                        current_cell = self.get_current_cell()
+                        rect = surf.get_rect(topleft=self.origin + vector(current_cell) * TILE_SIZE)
+                    # object
+                    else:
+                        current_cell = self.get_current_cell()
+                        rect = surf.get_rect(topleft=self.origin + vector(current_cell) * TILE_SIZE)
+                    self.display_surface.blit(surf, rect)
                 else:
-                    current_cell = self.get_current_cell()
-                    rect = surf.get_rect(topleft=self.origin + vector(current_cell) * TILE_SIZE)
-                self.display_surface.blit(surf, rect)
+                    pass
 
     # update
     def run(self, dt):
@@ -401,15 +479,17 @@ class CanvasObject(pygame.sprite.Sprite):
         # movement
         self.distance_to_origin = vector(self.rect.topleft) - origin
         self.selected = False
-        self.mouse_offset = vector()
 
     def start_drag(self):
         self.selected = True
-        self.mouse_offset = vector(mouse_pos()) - vector(self.rect.topleft)
 
     def drag(self):
         if self.selected:
-            self.rect.topleft = mouse_pos() - self.mouse_offset
+            x = int(mouse_pos()[0] / TILE_SIZE) * TILE_SIZE
+            y = int(mouse_pos()[1] / TILE_SIZE) * TILE_SIZE
+
+            fixed = vector((x, y))
+            self.rect.topleft = fixed
 
     def drag_end(self, origin):
         self.selected = False

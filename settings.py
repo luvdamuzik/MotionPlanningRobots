@@ -17,5 +17,8 @@ EDITOR_DATA = {
         'preview': 'graphics/table.png', 'graphics': None},
     4: {'style': 'robot', 'type': 'object', 'menu': 'robot', 'menu_surf': 'graphics/robot_player.png',
         'preview': 'graphics/robot_player.png', 'graphics': 'graphics/robot_player.png'},
-
+    5: {'style': 'save', 'type': 'text', 'menu': 'save', 'menu_surf': 'graphics/save.png',
+        'preview': None, 'graphics': None},
+    6: {'style': 'load', 'type': 'text', 'menu': 'load', 'menu_surf': 'graphics/load.png',
+        'preview': None, 'graphics': None},
 }

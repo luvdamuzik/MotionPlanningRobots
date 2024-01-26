@@ -8,12 +8,14 @@ from pathfinding.finder.a_star import AStarFinder
 from robot import Robot
 from node import Node
 from settings import *
+import tkinter as tk
+from tkinter import messagebox
 
 
 class Layout:
     def __init__(self, layers, grid, start_coords, end_coords, switch, asset_dict):
-        # player
-        self.player = None
+        # robots
+        self.robots = None
         self.follow_player = False
         # get display surface
         self.display_surface = pygame.display.get_surface()
@@ -30,7 +32,7 @@ class Layout:
         self.start_coords = start_coords
         self.end_coords = end_coords
 
-        self.calc_path_simple_one_to_one(layers,grid, start_coords, end_coords)
+        self.calc_path_simple_one_to_one(layers, grid, start_coords, end_coords)
 
     def build_level(self, layers, asset_dict):
         for layer_name, layer in layers.items():
@@ -40,26 +42,38 @@ class Layout:
                 if layer_name == 'obstacle':
                     Node(pos, asset_dict['table'], (self.all_sprites, self.obstacle_sprites))
                 if layer_name == 'robot':
-                    self.player = Robot(pos, self.all_sprites, self.obstacle_sprites)
+                    self.robots = Robot(pos, self.all_sprites, self.obstacle_sprites)
 
-    def calc_path_simple_one_to_one(self,layers, grid, start_coords, end_coords):
+    def calc_path_simple_one_to_one(self, layers, grid, start_coords, end_coords):
+        try:
+            # find valid coord to go to
+            for direction in ((-1, 0), (1, 0), (0, 1), (0, -1)):
+                if grid[end_coords[0][0] - direction[0]][end_coords[0][1] - direction[1]] != 0:
+                    helper = (end_coords[0][0] - direction[0], end_coords[0][1] - direction[1])
+                    break
+                else:
+                    helper = None
 
-        # find valid coord to go to
-        for direction in ((-1, 0), (1, 0), (0, 1), (0, -1)):
-            if grid[end_coords[0][0] - direction[0]][end_coords[0][1] - direction[1]] != 0:
-                helper = (end_coords[0][0] - direction[0], end_coords[0][1] - direction[1])
-                break
-            else:
-                helper = None
+            if helper is None:
+                raise ValueError("Unable to find a valid coordinate to go to.")
 
-        grid = Grid(matrix=grid)
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Error", str(e))
+            self.switch()
+        else:
+            grid = Grid(matrix=grid)
+            print(grid)
+            print(start_coords)
+            print(end_coords)
+            start_point = grid.node(start_coords[0][0], start_coords[0][1])
+            end_point = grid.node(helper[1], helper[0])
+            finder = AStarFinder()
+            path, _ = finder.find_path(start_point, end_point, grid)
 
-        start_point = grid.node(start_coords[0][1], start_coords[0][0])
-        end_point = grid.node(helper[1], helper[0])
-        finder = AStarFinder()
-        path, _ = finder.find_path(start_point, end_point, grid)
-
-        self.player.set_path(path)
+            self.robots.set_path(path)
 
     def event_loop(self):
         for event in pygame.event.get():
@@ -70,7 +84,7 @@ class Layout:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                self.switch()
+                self.switch(layout=True)
             if event.type == pygame.MOUSEWHEEL and 0.4 <= self.all_sprites.zoom_scale <= 1:
                 self.all_sprites.zoom_scale += event.y * 0.03
 
@@ -82,7 +96,7 @@ class Layout:
             self.follow_player = False
 
         if self.follow_player:
-            self.all_sprites.custom_draw(self.player)
+            self.all_sprites.custom_draw(self.robots)
         else:
             self.all_sprites.custom_draw()
 
