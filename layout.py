@@ -65,9 +65,6 @@ class Layout:
             self.switch()
         else:
             grid = Grid(matrix=grid)
-            print(grid)
-            print(start_coords)
-            print(end_coords)
             start_point = grid.node(start_coords[0][0], start_coords[0][1])
             end_point = grid.node(helper[1], helper[0])
             finder = AStarFinder()
@@ -85,14 +82,22 @@ class Layout:
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 self.switch(layout=True)
-            if event.type == pygame.MOUSEWHEEL and 0.4 <= self.all_sprites.zoom_scale <= 1:
+            if event.type == pygame.MOUSEWHEEL and 0.2 <= self.all_sprites.zoom_scale <= 1:
                 self.all_sprites.zoom_scale += event.y * 0.03
+            if event.type == pygame.MOUSEWHEEL and (
+                    self.all_sprites.zoom_scale < 0.2 or self.all_sprites.zoom_scale > 1):
+                if self.all_sprites.zoom_scale < 0.2:
+                    self.all_sprites.zoom_scale = 0.2
+                if self.all_sprites.zoom_scale > 1:
+                    self.all_sprites.zoom_scale = 1
 
     def run(self, dt):
         # update and draw the game
         if pygame.mouse.get_pressed()[0]:
             self.follow_player = True
+        # here must add logic only if robot was clicked
         elif pygame.mouse.get_pressed()[2]:
+            # here must find which robot was clicked
             self.follow_player = False
 
         if self.follow_player:

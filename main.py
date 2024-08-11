@@ -78,7 +78,6 @@ class Game:
             else:
                 self.transition.active = False
 
-
     def run(self):
         while True:
             self.screen.fill('black')

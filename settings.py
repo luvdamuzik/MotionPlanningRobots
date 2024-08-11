@@ -21,4 +21,10 @@ EDITOR_DATA = {
         'preview': None, 'graphics': None},
     6: {'style': 'load', 'type': 'text', 'menu': 'load', 'menu_surf': 'graphics/load.png',
         'preview': None, 'graphics': None},
+    7: {'style': 'clear', 'type': 'text', 'menu': 'clear', 'menu_surf': 'graphics/clear.png',
+        'preview': None, 'graphics': None},
+    8: {'style': 'X', 'type': 'text', 'menu': 'X', 'menu_surf': 'graphics/X.png',
+        'preview': None, 'graphics': None},
+    9: {'style': 'menu', 'type': 'text', 'menu': 'menu', 'menu_surf': 'graphics/menu.png',
+        'preview': None, 'graphics': None},
 }
