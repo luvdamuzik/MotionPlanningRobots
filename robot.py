@@ -2,13 +2,29 @@ import pygame
 from settings import *
 from timer import Timer
 
+# Predefined list of distinct colors
+ROBOT_COLORS = [
+    pygame.Color(255, 0, 0),  # Red
+    pygame.Color(0, 255, 0),  # Green
+    pygame.Color(0, 0, 255),  # Blue
+    pygame.Color(255, 255, 0),  # Yellow
+    pygame.Color(255, 165, 0),  # Orange
+    pygame.Color(128, 0, 128),  # Purple
+]
+
 
 class Robot(pygame.sprite.Sprite):
+    robot_counter = 0
+
     def __init__(self, pos, group, obstacle_sprites):
         super().__init__(group)
+        self.pos_top_left = pos
         self.image = pygame.image.load('graphics/robot_player.png').convert_alpha()
         self.rect = self.image.get_rect(topleft=pos)
         self.hitbox = self.rect.copy().inflate(0, -26)
+
+        self.color = ROBOT_COLORS[Robot.robot_counter % len(ROBOT_COLORS)]
+        Robot.robot_counter += 1
 
         self.direction = pygame.math.Vector2()
         self.pos = pygame.math.Vector2(self.rect.center)
@@ -19,6 +35,15 @@ class Robot(pygame.sprite.Sprite):
         self.path = []
         self.collision_rects = []
         self.path_timer = Timer(500)
+
+        self.can_move = False
+
+    def update_position(self):
+        self.rect.topleft = self.pos_top_left
+        self.hitbox.topleft = self.pos_top_left
+        self.pos = pygame.math.Vector2(self.rect.center)
+        self.direction = pygame.math.Vector2()
+        self.can_move = False
 
     def set_path(self, path):
         del path[0]
@@ -38,7 +63,9 @@ class Robot(pygame.sprite.Sprite):
         if self.collision_rects:
             start = pygame.math.Vector2(self.pos)
             end = pygame.math.Vector2(self.collision_rects[0].center)
-            self.direction = (end - start).normalize()
+            if end-start:
+                self.direction = (end - start).normalize()
+
         else:
             self.direction = pygame.math.Vector2(0, 0)
             self.path = []
@@ -70,8 +97,12 @@ class Robot(pygame.sprite.Sprite):
         if keys[pygame.K_s] or self.path_timer.active:
             self.get_direction()
             self.path_timer.activate()
+            self.can_move = True
 
     def move(self, dt):
+        if not self.can_move:
+            return
+
         if self.direction.magnitude() != 0:
             self.direction = self.direction.normalize()
 
@@ -105,5 +136,6 @@ class Robot(pygame.sprite.Sprite):
                     self.pos.y = self.hitbox.centery
 
     def update(self, dt, grid, start_coords, end_coords):
+        self.path_timer.update()
         self.input()
         self.move(dt)

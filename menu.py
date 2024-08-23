@@ -3,6 +3,51 @@ from settings import *
 from pygame.image import load
 
 
+class MenuLayout:
+    def __init__(self):
+        self.menu_button = pygame.sprite.Group()
+        self.display_surface = pygame.display.get_surface()
+        self.menu_surfs = None
+        self.create_data()
+        self.create_buttons()
+        self.selected_option = None
+
+    def create_data(self):
+        self.menu_surfs = {}
+        for key, value in EDITOR_DATA.items():
+            if value['menu']:
+                if not value['menu'] in self.menu_surfs:
+                    self.menu_surfs[value['menu']] = [(key, load(value['menu_surf']))]
+                else:
+                    self.menu_surfs[value['menu']].append((key, load(value['menu_surf'])))
+
+    def create_buttons(self):
+        # Menu button area
+        size = 50  # Adjust the size if necessary
+        margin = 6
+        self.rect_top = pygame.Rect(WIDTH - size - margin, 0 + margin, size, size)
+
+        # Single menu button
+        button_margin = 5
+        self.menu_button_rect = pygame.Rect(self.rect_top.topleft,
+                                            (self.rect_top.width, self.rect_top.height)).inflate(-button_margin,
+                                                                                                 -button_margin)
+
+        # Create the menu button
+        Button(self.menu_button_rect, [self.menu_button], self.menu_surfs['menu'])
+
+    def click(self, mouse_pos, mouse_button):
+        for sprite in self.menu_button:
+            if sprite.rect.collidepoint(mouse_pos):
+                if mouse_button[2]:  # Right-click to switch
+                    sprite.switch()
+                return sprite.get_id()
+
+    def display(self):
+        self.menu_button.update()
+        self.menu_button.draw(self.display_surface)
+
+
 class Menu:
     def __init__(self):
         self.buttons = pygame.sprite.Group()
@@ -82,11 +127,12 @@ class Menu:
         for sprite in self.buttons:
             if not self.collapse_top_menu:
                 if sprite.rect.collidepoint(mouse_pos):
-                    if mouse_button[2]:  # right click
+                    if mouse_button[2]:
                         sprite.switch()
                     return sprite.get_id()
             else:
-                if (sprite in self.menu_button or sprite in self.bottom_buttons) and sprite.rect.collidepoint(mouse_pos):
+                if (sprite in self.menu_button or sprite in self.bottom_buttons) and sprite.rect.collidepoint(
+                        mouse_pos):
                     return sprite.get_id()
 
     def highlight_indicator(self, index):

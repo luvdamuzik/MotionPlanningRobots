@@ -341,8 +341,7 @@ class Editor:
             if error_message:
                 error_surface = font.render(error_message, True, pygame.Color('red'))
                 self.display_surface.blit(error_surface,
-                                          (
-                                              popup_rect.centerx - error_surface.get_width() // 2,
+                                          (popup_rect.centerx - error_surface.get_width() // 2,
                                               popup_rect.bottom - 90))
 
             pygame.display.flip()
