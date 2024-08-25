@@ -6,13 +6,8 @@ from editor import Editor
 from layout import Layout
 from settings import *
 
-import tkinter as tk
-from tkinter import messagebox
-
-# Initialize pygame
 pygame.init()
 
-# Create a Pygame window
 screen = pygame.display.set_mode((800, 600))
 
 
@@ -20,15 +15,13 @@ class Game:
     def __init__(self):
 
         pygame.init()
-        # Screen
-        # self.screen = pygame.display.set_mode((WIDTH, HEIGHT), flags=pygame.FULLSCREEN)
+
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
-        # Title and icon
         pygame.display.set_caption("Motion Planning simulator")
         icon = load("graphics/robot.png")
         pygame.display.set_icon(icon)
-        # Clock
+
         self.clock = pygame.time.Clock()
 
         self.wall_image = load('graphics/wall.png').convert_alpha()
@@ -39,7 +32,6 @@ class Game:
         self.transition = Transition(self.toggle)
         self.editor = Editor(self.switch)
 
-        # cursor
         surf = load("graphics/mouse.png").convert_alpha()
         cursor = pygame.cursors.Cursor((0, 0), surf)
         pygame.mouse.set_cursor(cursor)

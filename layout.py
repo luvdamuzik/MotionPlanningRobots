@@ -1,13 +1,16 @@
 import sys
 from itertools import permutations, product
 
+import numpy as np
 import pygame
 
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from pathfinding.finder.dijkstra import DijkstraFinder
 from pathfinding.finder.breadth_first import BreadthFirstFinder
+from scipy.optimize import linear_sum_assignment
 
+from BatClustering import BatAlgorithmClustering
 from PSO import find_path_pso
 from menu import MenuLayout
 from robot import Robot
@@ -16,6 +19,8 @@ from settings import *
 import tkinter as tk
 from tkinter import messagebox
 from pygame.mouse import get_pos as mouse_pos
+from pygame.mouse import get_pressed as mouse_buttons
+from scipy.spatial import distance
 
 
 class Point:
@@ -33,26 +38,23 @@ def convert_to_points(tuple_list):
 
 class Layout:
     def __init__(self, layers, grid, start_coords, end_coords, switch, asset_dict):
-        # robots
         self.dt = None
         self.robots = pygame.sprite.Group()
         self.follow_player = False
         self.following_robot_index = None
-        # get display surface
+
         self.display_surface = pygame.display.get_surface()
         self.switch = switch
-        # sprite setup
+
         self.all_sprites = YSortCameraGroup()
         self.obstacle_sprites = pygame.sprite.Group()
         self.half_width = self.display_surface.get_size()[0] // 2
         self.half_height = self.display_surface.get_size()[1] // 2
 
-        # Create map
         self.build_level(layers, asset_dict)
         self.menu = MenuLayout()
         self.selected_option = None
 
-        # Coords
         self.grid = grid
         self.start_coords = start_coords
         self.end_coords = end_coords
@@ -68,17 +70,25 @@ class Layout:
                     Robot(pos, [self.all_sprites, self.robots], self.obstacle_sprites)
 
     def draw_path(self):
+        coord_to_robots = {}
+
+        for robot in self.robots:
+            if robot.path:
+                for point in robot.path:
+                    coord = (point.x, point.y)
+                    if coord not in coord_to_robots:
+                        coord_to_robots[coord] = []
+                    coord_to_robots[coord].append(robot.color)
+
         for robot in self.robots:
             if robot.path:
                 points = []
                 for point in robot.path:
-                    # Calculate the position of each point on the internal surface
                     x = (
                                 point.x * TILE_SIZE) - self.all_sprites.offset.x + self.all_sprites.internal_offset.x + TILE_SIZE / 2
                     y = (
                                 point.y * TILE_SIZE) - self.all_sprites.offset.y + self.all_sprites.internal_offset.y + TILE_SIZE / 2
 
-                    # Scale the points according to the zoom level
                     x = x * self.all_sprites.zoom_scale + self.half_width - self.all_sprites.internal_surf_size[
                         0] * self.all_sprites.zoom_scale / 2
                     y = y * self.all_sprites.zoom_scale + self.half_height - self.all_sprites.internal_surf_size[
@@ -87,8 +97,36 @@ class Layout:
                     points.append((x, y))
                     pygame.draw.circle(self.display_surface, robot.color, (x, y), 2)
 
-                # Draw the path as a series of connected lines on the main display surface
-                pygame.draw.lines(self.display_surface, robot.color, False, points, 5)
+                for i in range(len(points) - 1):
+                    start_point = points[i]
+                    end_point = points[i + 1]
+                    coord = (robot.path[i].x, robot.path[i].y)
+
+                    if len(coord_to_robots[coord]) > 1:
+                        self.draw_multicolor_line(start_point, end_point, coord_to_robots[coord], 5)
+                    else:
+                        pygame.draw.line(self.display_surface, robot.color, start_point, end_point, 5)
+
+    def draw_multicolor_line(self, start_pos, end_pos, colors, width):
+        length = ((end_pos[0] - start_pos[0]) ** 2 + (end_pos[1] - start_pos[1]) ** 2) ** 0.5
+        total_segments = int(length / 10)
+        num_colors = len(colors)
+
+        if total_segments < num_colors:
+            total_segments = num_colors
+
+        for i in range(total_segments):
+            segment_start = (
+                start_pos[0] + (end_pos[0] - start_pos[0]) * i / total_segments,
+                start_pos[1] + (end_pos[1] - start_pos[1]) * i / total_segments
+            )
+            segment_end = (
+                start_pos[0] + (end_pos[0] - start_pos[0]) * (i + 1) / total_segments,
+                start_pos[1] + (end_pos[1] - start_pos[1]) * (i + 1) / total_segments
+            )
+
+            segment_color = colors[i % num_colors]
+            pygame.draw.line(self.display_surface, segment_color, segment_start, segment_end, width)
 
     def BFS_one_to_one(self, grid, start_coords, end_coords):
         try:
@@ -100,13 +138,6 @@ class Layout:
             if not helpers:
                 raise ValueError("Unable to find a valid coordinate to go to.")
 
-        except Exception as e:
-            print(f"An error occurred: {str(e)}")
-            root = tk.Tk()
-            root.withdraw()
-            messagebox.showerror("Error", str(e))
-            self.switch()
-        else:
             paths = []
             grid = Grid(matrix=grid)
             start_point = grid.node(start_coords[0][0], start_coords[0][1])
@@ -114,11 +145,25 @@ class Layout:
                 end_point = grid.node(helper[1], helper[0])
                 finder = BreadthFirstFinder()
                 path, _ = finder.find_path(start_point, end_point, grid)
+                if not path:
+                    raise ValueError("No path found from start to end coordinates.")
                 paths.append(path)
                 grid.cleanup()
 
+            if not paths:
+                raise ValueError("No valid paths were found.")
+
             for robot in self.robots:
-                robot.set_path(min(paths, key=len))
+                if (robot.pos_top_left[0], robot.pos_top_left[1]) == (
+                        start_coords[0][0] * TILE_SIZE, start_coords[0][1] * TILE_SIZE):
+                    robot.set_path(min(paths, key=len))
+
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Error", str(e))
+            self.switch()
 
     def Dijkstra_one_to_one(self, grid, start_coords, end_coords):
         try:
@@ -130,13 +175,6 @@ class Layout:
             if not helpers:
                 raise ValueError("Unable to find a valid coordinate to go to.")
 
-        except Exception as e:
-            print(f"An error occurred: {str(e)}")
-            root = tk.Tk()
-            root.withdraw()
-            messagebox.showerror("Error", str(e))
-            self.switch()
-        else:
             paths = []
             grid = Grid(matrix=grid)
             start_point = grid.node(start_coords[0][0], start_coords[0][1])
@@ -144,13 +182,28 @@ class Layout:
                 end_point = grid.node(helper[1], helper[0])
                 finder = DijkstraFinder()
                 path, _ = finder.find_path(start_point, end_point, grid)
+                if not path:
+                    raise ValueError("No path found from start to end coordinates.")
                 paths.append(path)
                 grid.cleanup()
 
+            if not paths:
+                raise ValueError("No valid paths were found.")
+
             for robot in self.robots:
-                robot.set_path(min(paths, key=len))
+                if (robot.pos_top_left[0], robot.pos_top_left[1]) == (
+                        start_coords[0][0] * TILE_SIZE, start_coords[0][1] * TILE_SIZE):
+                    robot.set_path(min(paths, key=len))
+
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Error", str(e))
+            self.switch()
 
     def Astar_one_to_one(self, grid, start_coords, end_coords):
+
         try:
             helpers = []
             for direction in ((-1, 0), (1, 0), (0, 1), (0, -1)):
@@ -160,25 +213,32 @@ class Layout:
             if not helpers:
                 raise ValueError("Unable to find a valid coordinate to go to.")
 
+            paths = []
+            grid = Grid(matrix=grid)
+            start_point = grid.node(start_coords[0][0], start_coords[0][1])
+            for helper in helpers:
+                end_point = grid.node(helper[1], helper[0])
+                finder = AStarFinder()
+                path, _ = finder.find_path(start_point, end_point, grid)
+                if not path:
+                    raise ValueError("No path found from start to end coordinates.")
+                paths.append(path)
+                grid.cleanup()
+
+            if not paths:
+                raise ValueError("No valid paths were found.")
+
+            for robot in self.robots:
+                if (robot.pos_top_left[0], robot.pos_top_left[1]) == (
+                        start_coords[0][0] * TILE_SIZE, start_coords[0][1] * TILE_SIZE):
+                    robot.set_path(min(paths, key=len))
+
         except Exception as e:
             print(f"An error occurred: {str(e)}")
             root = tk.Tk()
             root.withdraw()
             messagebox.showerror("Error", str(e))
             self.switch()
-        else:
-            paths = []
-            grid = Grid(matrix=self.grid)
-            start_point = grid.node(start_coords[0][0], start_coords[0][1])
-            for helper in helpers:
-                end_point = grid.node(helper[1], helper[0])
-                finder = AStarFinder()
-                path, _ = finder.find_path(start_point, end_point, grid)
-                paths.append(path)
-                grid.cleanup()
-
-            for robot in self.robots:
-                robot.set_path(min(paths, key=len))
 
     def Dijkstra_one_to_many(self, grid, start_coords, end_coords_list):
         def get_helpers(target, grid):
@@ -196,6 +256,9 @@ class Layout:
 
             all_helpers_combinations = [get_helpers(target, grid) for target in end_coords_list]
 
+            if not all_helpers_combinations or any(not helpers for helpers in all_helpers_combinations):
+                raise ValueError("Unable to find any valid helper coordinates for one or more targets.")
+
             for helper_combination in product(*all_helpers_combinations):
                 if len(set(helper_combination)) < len(helper_combination):
                     continue
@@ -212,7 +275,7 @@ class Layout:
                         finder = DijkstraFinder()
                         path, _ = finder.find_path(start_node, end_node, grid)
                         if not path:
-                            raise ValueError(f"Unable to find a path to helper coordinate {helper}.")
+                            raise ValueError("No valid paths were found.")
                         total_path.extend(path)
                         path_length += len(path) - 1
                         current_point = helper
@@ -220,6 +283,9 @@ class Layout:
                     if path_length < min_path_length:
                         min_path_length = path_length
                         shortest_path = total_path
+
+            if not shortest_path:
+                raise ValueError("No valid paths were found.")
 
         except Exception as e:
             print(f"An error occurred: {str(e)}")
@@ -229,7 +295,9 @@ class Layout:
             self.switch()
         else:
             for robot in self.robots:
-                robot.set_path(shortest_path)
+                if (robot.pos_top_left[0], robot.pos_top_left[1]) == (
+                        start_coords[0][0] * TILE_SIZE, start_coords[0][1] * TILE_SIZE):
+                    robot.set_path(shortest_path)
 
     def Astar_one_to_many(self, grid, start_coords, end_coords_list):
         def get_helpers(target, grid):
@@ -247,6 +315,9 @@ class Layout:
 
             all_helpers_combinations = [get_helpers(target, grid) for target in end_coords_list]
 
+            if not all_helpers_combinations or any(not helpers for helpers in all_helpers_combinations):
+                raise ValueError("Unable to find any valid helper coordinates for one or more targets.")
+
             for helper_combination in product(*all_helpers_combinations):
                 if len(set(helper_combination)) < len(helper_combination):
                     continue
@@ -263,7 +334,7 @@ class Layout:
                         finder = AStarFinder()
                         path, _ = finder.find_path(start_node, end_node, grid)
                         if not path:
-                            raise ValueError(f"Unable to find a path to helper coordinate {helper}.")
+                            raise ValueError("No valid paths were found.")
                         total_path.extend(path)
                         path_length += len(path) - 1
                         current_point = helper
@@ -271,6 +342,9 @@ class Layout:
                     if path_length < min_path_length:
                         min_path_length = path_length
                         shortest_path = total_path
+
+            if not shortest_path:
+                raise ValueError("No valid paths were found.")
 
         except Exception as e:
             print(f"An error occurred: {str(e)}")
@@ -280,7 +354,9 @@ class Layout:
             self.switch()
         else:
             for robot in self.robots:
-                robot.set_path(shortest_path)
+                if (robot.pos_top_left[0], robot.pos_top_left[1]) == (
+                        start_coords[0][0] * TILE_SIZE, start_coords[0][1] * TILE_SIZE):
+                    robot.set_path(shortest_path)
 
     def choose_algorithm_popup(self):
         input_active = True
@@ -296,8 +372,7 @@ class Layout:
         elif len(self.start_coords) == 1 and len(self.end_coords) > 1:
             options = [['Dijkstra', 'Dijkstra 1toMany'], ['A*', 'A* 1toMany'], ['PSO', 'PSO']]
         else:
-            options = [['A* with pause', 'A* ManytoManyP'], ['A* with block', 'A* ManytoManyB'],
-                       ['A* with pause+block', 'A* ManytoManyPB'], ['PSO', 'PSO ManytoMany']]
+            options = [['A* with pause', 'A* ManytoManyP'], ['PSO', 'PSO ManytoMany']]
 
         menu_height = option_height * len(options) + 40
 
@@ -362,28 +437,118 @@ class Layout:
         for robot in self.robots:
             robot.update_position()
 
+    def assign_clusters_to_robots(self, centroids):
+        num_robots = len(self.robots)
+        num_clusters = len(centroids)
+
+        dist_matrix = np.zeros((num_robots, num_clusters))
+        for i, robot in enumerate(self.robots):
+            for j, centroid in enumerate(centroids):
+                dist_matrix[i, j] = distance.euclidean(robot.pos_top_left, np.array(centroid))
+
+        row_ind, col_ind = linear_sum_assignment(dist_matrix)
+
+        assignment = {cluster_idx: robot_idx for robot_idx, cluster_idx in zip(row_ind, col_ind)}
+
+        return assignment
+
+    def add_pauses_for_same_positions(self):
+        max_length = max(len(robot.path) for robot in self.robots)
+
+        for i in range(max_length):
+            positions_at_i = []
+
+            for robot in self.robots:
+                if i < len(robot.path):
+                    positions_at_i.append((robot.path[i].x, robot.path[i].y))
+                else:
+                    positions_at_i.append(None)
+
+            unique_positions = set(filter(None, positions_at_i))
+
+            if len(unique_positions) < len(positions_at_i):
+                for pos in unique_positions:
+                    indexes_with_pos = [index for index, value in enumerate(positions_at_i) if value == pos]
+
+                    if len(indexes_with_pos) > 1:
+                        min_length = min(len(robot.path) for robot in self.robots)
+                        shortest_paths = [robot.path for robot in self.robots if
+                                          len(robot.path) == min_length]
+
+                        for robot in self.robots:
+                            if shortest_paths[0] == robot.path:
+                                robot.path.insert(i - 1, robot.path[i - 1])
+
+    def max_manhattan_distance(self, cluster=None):
+        if cluster is None:
+            cluster = self.end_coords
+        max_distance = 0
+        for end in cluster:
+            distance = abs(self.start_coords[0][1] - end[0]) + abs(self.start_coords[0][1] - end[1])
+            if distance > max_distance:
+                max_distance = distance
+        return max_distance
+
     def menu_click(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and self.menu.rect_top.collidepoint(mouse_pos()):
-            selected_algorithm, self.selected_option = self.choose_algorithm_popup()
-            if selected_algorithm:
+            new_index = self.menu.click(mouse_pos(), mouse_buttons())
+            if new_index == 9:
+                selected_algorithm, self.selected_option = self.choose_algorithm_popup()
+                if selected_algorithm:
+                    self.reset_robots()
+                if selected_algorithm == 'BFS 1to1':
+                    self.BFS_one_to_one(self.grid, self.start_coords, self.end_coords)
+                if selected_algorithm == 'Dijkstra 1to1':
+                    self.Dijkstra_one_to_one(self.grid, self.start_coords, self.end_coords)
+                if selected_algorithm == 'A* 1to1':
+                    self.Astar_one_to_one(self.grid, self.start_coords, self.end_coords)
+                if selected_algorithm == 'Dijkstra 1toMany':
+                    self.Dijkstra_one_to_many(self.grid, self.start_coords, self.end_coords)
+                if selected_algorithm == 'A* 1toMany':
+                    self.Astar_one_to_many(self.grid, self.start_coords, self.end_coords)
+                if selected_algorithm == 'PSO':
+                    max_waypoint = len(self.grid) * len(self.grid[0])
+                    min_waypoint = self.max_manhattan_distance()
+                    best_path = find_path_pso(self.grid, self.start_coords, self.end_coords, min_waypoint, max_waypoint,
+                                              5)
+                    if best_path is not None:
+                        best_path = convert_to_points(best_path)
+                        for robot in self.robots:
+                            if (robot.pos_top_left[0], robot.pos_top_left[1]) == (
+                                    self.start_coords[0][0] * TILE_SIZE, self.start_coords[0][1] * TILE_SIZE):
+                                robot.set_path(best_path)
+                if selected_algorithm == 'A* ManytoManyP':
+                    bat_clustering = BatAlgorithmClustering(self.end_coords, len(self.robots))
+                    centroids, clusters = bat_clustering.run()
+                    print("Centroids:", centroids)
+                    for i, cluster in enumerate(clusters):
+                        print(f"Cluster {i + 1}: {cluster}")
+                    assignment = self.assign_clusters_to_robots(centroids)
+                    for i, cluster in enumerate(clusters):
+                        self.Astar_one_to_many(self.grid, [self.start_coords[assignment[i]]], cluster)
+                    self.add_pauses_for_same_positions()
+                if selected_algorithm == 'PSO ManytoMany':
+                    bat_clustering = BatAlgorithmClustering(self.end_coords, len(self.robots))
+                    centroids, clusters = bat_clustering.run()
+                    print("Centroids:", centroids)
+                    for i, cluster in enumerate(clusters):
+                        print(f"Cluster {i + 1}: {cluster}")
+                    assignment = self.assign_clusters_to_robots(centroids)
+                    for i, cluster in enumerate(clusters):
+                        cluster = [tuple(arr) for arr in cluster]
+                        max_waypoint = len(self.grid) * len(self.grid[0])
+                        min_waypoint = self.max_manhattan_distance()
+                        best_path = find_path_pso(self.grid, [self.start_coords[assignment[i]]], cluster, min_waypoint,
+                                                  max_waypoint, 5)
+                        best_path = convert_to_points(best_path)
+                        for robot in self.robots:
+                            if (robot.pos_top_left[0], robot.pos_top_left[1]) == (
+                                    self.start_coords[assignment[i]][0] * TILE_SIZE,
+                                    self.start_coords[assignment[i]][1] * TILE_SIZE):
+                                robot.set_path(best_path)
+                    self.add_pauses_for_same_positions()
+            elif new_index == 10:
                 self.reset_robots()
-            if selected_algorithm == 'BFS 1to1':
-                self.BFS_one_to_one(self.grid, self.start_coords, self.end_coords)
-            if selected_algorithm == 'Dijkstra 1to1':
-                self.Dijkstra_one_to_one(self.grid, self.start_coords, self.end_coords)
-            if selected_algorithm == 'A* 1to1':
-                self.Astar_one_to_one(self.grid, self.start_coords, self.end_coords)
-            if selected_algorithm == 'Dijkstra 1toMany':
-                self.Dijkstra_one_to_many(self.grid, self.start_coords, self.end_coords)
-            if selected_algorithm == 'A* 1toMany':
-                self.Astar_one_to_many(self.grid, self.start_coords, self.end_coords)
-            if selected_algorithm == 'PSO':
-                best_path = find_path_pso(self.grid, self.start_coords, self.end_coords, 2, 100, 100, 200)
-                best_path = convert_to_points(best_path)
-                for robot in self.robots:
-                    robot.set_path(best_path)
-            if selected_algorithm == 'A* ManytoManyP':
-                clusters = None # then assign clusters to robots then run after that check for collisons then fix them using pause
 
     def event_loop(self):
         for event in pygame.event.get():
@@ -416,20 +581,10 @@ class Layout:
         self.dt = dt
         mouse_pos = pygame.mouse.get_pos()
 
-        adjusted_mouse_pos = (
-            (mouse_pos[
-                 0] - self.half_width) / self.all_sprites.zoom_scale + self.all_sprites.offset.x + self.all_sprites.internal_offset.x,
-            (mouse_pos[
-                 1] - self.half_height) / self.all_sprites.zoom_scale + self.all_sprites.offset.y + self.all_sprites.internal_offset.y
-        )
-
         if pygame.mouse.get_pressed()[0]:
             clicked_robot = None
 
             for i, robot in enumerate(self.robots):
-                # print(robot.rect.x, robot.rect.y)
-                # print(mouse_pos)
-                # print(adjusted_mouse_pos)
                 if robot.rect.collidepoint(mouse_pos):
                     clicked_robot = robot
                     self.follow_player = True
@@ -468,12 +623,10 @@ class YSortCameraGroup(pygame.sprite.Group):
         super().__init__()
         self.display_surface = pygame.display.get_surface()
 
-        # offset
         self.half_width = self.display_surface.get_size()[0] // 2
         self.half_height = self.display_surface.get_size()[1] // 2
         self.offset = pygame.math.Vector2()
 
-        # zoom
         self.zoom_scale = 0.4
         self.internal_surf_size = (2500, 2500)
         self.internal_surf = pygame.Surface(self.internal_surf_size, pygame.SRCALPHA)
@@ -483,7 +636,6 @@ class YSortCameraGroup(pygame.sprite.Group):
         self.internal_offset.x = self.internal_surf_size[0] // 2 - self.half_width
         self.internal_offset.y = self.internal_surf_size[1] // 2 - self.half_height
 
-        # Panning variables
         self.is_panning = False
         self.pan_start_pos = pygame.math.Vector2()
 
@@ -513,7 +665,6 @@ class YSortCameraGroup(pygame.sprite.Group):
             self.zoom_scale -= 0.01
 
     def draw_corner_lines(self, rect, line_length=10, offset=2, color=(255, 0, 0), thickness=5):
-        # Top-left corner
         pygame.draw.line(
             self.internal_surf, color,
             (rect.left + offset, rect.top + offset),
@@ -523,7 +674,6 @@ class YSortCameraGroup(pygame.sprite.Group):
             (rect.left + offset, rect.top + offset),
             (rect.left + offset, rect.top + line_length + offset), thickness)
 
-        # Top-right corner
         pygame.draw.line(
             self.internal_surf, color,
             (rect.right - offset, rect.top + offset),
@@ -533,7 +683,6 @@ class YSortCameraGroup(pygame.sprite.Group):
             (rect.right - offset, rect.top + offset),
             (rect.right - offset, rect.top + line_length + offset), thickness)
 
-        # Bottom-left corner
         pygame.draw.line(
             self.internal_surf, color,
             (rect.left + offset, rect.bottom - offset),
@@ -543,7 +692,6 @@ class YSortCameraGroup(pygame.sprite.Group):
             (rect.left + offset, rect.bottom - offset),
             (rect.left + offset, rect.bottom - line_length - offset), thickness)
 
-        # Bottom-right corner
         pygame.draw.line(
             self.internal_surf, color,
             (rect.right - offset, rect.bottom - offset),
@@ -554,14 +702,11 @@ class YSortCameraGroup(pygame.sprite.Group):
             (rect.right - offset, rect.bottom - line_length - offset), thickness)
 
     def custom_draw(self, player=None):
-        # getting offset
         if player:
             self.center_target_camera(player)
             self.zoom_scale = 1
         else:
             self.zoom_keyboard_control()
-            # self.offset.x = 0
-            # self.offset.y = 0
             self.update_pan()
 
         # zoom

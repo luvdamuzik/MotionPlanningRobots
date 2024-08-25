@@ -4,8 +4,8 @@ TILE_SIZE = 64
 WHITE = (255, 255, 255)
 GRAY = (200, 200, 200)
 BLACK = (0, 0, 0)
-ROBOT_COLOR = (0, 0, 255)  # Blue color for the robot
-TILE_COLOR = (160, 160, 160)  # Tile floor color
+ROBOT_COLOR = (0, 0, 255)
+TILE_COLOR = (160, 160, 160)
 BUTTON_BG_COLOR = '#33323d'
 BUTTON_LINE_COLOR = '#f5f1de'
 ANIMATION_SPEED = 8
@@ -27,4 +27,6 @@ EDITOR_DATA = {
         'preview': None, 'graphics': None},
     9: {'style': 'menu', 'type': 'text', 'menu': 'menu', 'menu_surf': 'graphics/menu.png',
         'preview': None, 'graphics': None},
+    10: {'style': 'reset', 'type': 'text', 'menu': 'reset', 'menu_surf': 'graphics/reset.png',
+         'preview': None, 'graphics': None},
 }

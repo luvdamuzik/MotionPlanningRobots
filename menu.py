@@ -22,24 +22,21 @@ class MenuLayout:
                     self.menu_surfs[value['menu']].append((key, load(value['menu_surf'])))
 
     def create_buttons(self):
-        # Menu button area
-        size = 50  # Adjust the size if necessary
+        size = 100
         margin = 6
-        self.rect_top = pygame.Rect(WIDTH - size - margin, 0 + margin, size, size)
-
-        # Single menu button
         button_margin = 5
-        self.menu_button_rect = pygame.Rect(self.rect_top.topleft,
-                                            (self.rect_top.width, self.rect_top.height)).inflate(-button_margin,
-                                                                                                 -button_margin)
 
-        # Create the menu button
+        self.rect_top = pygame.Rect(WIDTH - size - margin, 0 + margin, size, size)
+        self.menu_button_rect = pygame.Rect(self.rect_top.topleft, (self.rect_top.width / 2, self.rect_top.height/2)).move(size/2,0).inflate(-button_margin, -button_margin)
         Button(self.menu_button_rect, [self.menu_button], self.menu_surfs['menu'])
+
+        self.reset_button_rect = self.menu_button_rect.move(0, size / 2 + margin)
+        Button(self.reset_button_rect, [self.menu_button], self.menu_surfs['reset'])
 
     def click(self, mouse_pos, mouse_button):
         for sprite in self.menu_button:
             if sprite.rect.collidepoint(mouse_pos):
-                if mouse_button[2]:  # Right-click to switch
+                if mouse_button[2]:
                     sprite.switch()
                 return sprite.get_id()
 
@@ -74,14 +71,12 @@ class Menu:
                     self.menu_surfs[value['menu']].append((key, load(value['menu_surf'])))
 
     def create_buttons(self):
-        # menu area general
         size = 200
         margin = 6
         self.rect_bottom = pygame.Rect(WIDTH - size - margin, HEIGHT - size - margin, size, size)
-        # save and load
+
         self.rect_top = pygame.Rect(WIDTH - size - margin, 0 + margin, size, size)
 
-        # button areas
         generic_button_rect = pygame.Rect(self.rect_bottom.topleft,
                                           (self.rect_bottom.width / 2, self.rect_bottom.height / 2))
         generic_button_rect_1 = pygame.Rect(self.rect_bottom.topleft,
@@ -93,7 +88,6 @@ class Menu:
             -button_margin)
         self.robot_button_rect = generic_button_rect_1.move(0, self.rect_bottom.height / 2).inflate(-button_margin,
                                                                                                     -button_margin)
-        # save and load buttons
         generic_button_rect_save_load = pygame.Rect(self.rect_top.topleft,
                                                     (self.rect_top.width, self.rect_top.height / 4))
         generic_button_top_small = pygame.Rect(self.rect_top.topleft,
@@ -102,7 +96,6 @@ class Menu:
         self.menu_button_rect = generic_button_top_small.copy().move(self.rect_top.width - self.rect_top.width / 4, 0). \
             inflate(-button_margin, -button_margin)
 
-        # self.menu_button_rect = generic_button_rect_save_load.copy().inflate(-button_margin, -button_margin)
 
         self.save_button_rect = generic_button_rect_save_load.copy().inflate(-button_margin, -button_margin)
         self.load_button_rect = generic_button_rect_save_load.move(0, self.rect_top.height / 4).inflate(-button_margin,
@@ -113,7 +106,6 @@ class Menu:
             move(0, self.rect_top.height).move(self.rect_top.width - self.rect_top.width / 4,
                                                -self.rect_top.height / 4).inflate(-button_margin, -button_margin)
 
-        # create the buttons
         Button(self.wall_button_rect, [self.buttons, self.bottom_buttons], self.menu_surfs['wall'])
         Button(self.table_button_rect, [self.buttons, self.bottom_buttons], self.menu_surfs['obstacle'])
         Button(self.robot_button_rect, [self.buttons, self.bottom_buttons], self.menu_surfs['robot'])

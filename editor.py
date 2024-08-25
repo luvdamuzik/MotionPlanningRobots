@@ -23,39 +23,31 @@ def get_save_files():
 
 class Editor:
     def __init__(self, switch):
-        # main setup
         self.display_surface = pygame.display.get_surface()
         self.canvas_data = {}
         self.imports()
         self.switch = switch
         self.disable = False
 
-        # navigation
         self.origin = vector()
         self.pan_active = False
         self.pan_offset = vector()
 
-        # support lines
         self.support_line_surf = pygame.Surface((WIDTH, HEIGHT))
         self.support_line_surf.set_colorkey("green")
         self.support_line_surf.set_alpha(30)
 
-        # selection
         self.selection_index = 2
         self.previous_index = None
 
-        # menu
         self.menu = Menu()
 
-        # objects
         self.canvas_objects = pygame.sprite.Group()
         self.object_drag_active = False
         self.object_timer = Timer(400)
 
-        # saves
         self.num_of_saves = len(os.listdir('saves'))
 
-    # support functions
     def get_current_cell(self, obj=None):
         distance_to_origin = vector(mouse_pos()) - self.origin if not obj else vector(
             obj.distance_to_origin) - self.origin
@@ -82,7 +74,6 @@ class Editor:
                     'frames': graphics,
                     'length': len(graphics)
                 }
-                # preview
         self.preview_surfs = {key: load(value['preview']) for key, value in EDITOR_DATA.items() if
                               value['preview']}
 
@@ -99,7 +90,6 @@ class Editor:
 
     def create_grid(self, save=False):
         try:
-            # add objects to the tiles
             for tile in self.canvas_data.values():
                 tile.objects = []
 
@@ -107,12 +97,11 @@ class Editor:
                 current_cell = self.get_current_cell(obj)
                 offset = vector(obj.distance_to_origin) - (vector(current_cell) * TILE_SIZE)
 
-                if current_cell in self.canvas_data:  # tile exists already
+                if current_cell in self.canvas_data:
                     self.canvas_data[current_cell].add_id(obj.tile_id, offset)
-                else:  # no tile exists yet
+                else:
                     self.canvas_data[current_cell] = CanvasTile(obj.tile_id, offset)
 
-            # create an empty grid
             layers = {
                 'wall': {},
                 'obstacle': {},
@@ -130,7 +119,6 @@ class Editor:
             return
         else:
             try:
-                # grid offset
                 left = sorted(self.canvas_data.keys(), key=lambda t: t[0])[0][0]
                 right = sorted(self.canvas_data.keys(), key=lambda t: t[0], reverse=True)[0][0]
                 top = sorted(self.canvas_data.keys(), key=lambda t: t[1])[0][1]
@@ -140,7 +128,6 @@ class Editor:
                 start_coords = []
                 end_coords = []
 
-                # fill the grid
                 for tile_pos, tile in self.canvas_data.items():
                     row_adjusted = tile_pos[1] - top
                     col_adjusted = tile_pos[0] - left
@@ -156,7 +143,7 @@ class Editor:
                         end_coords.append((row_adjusted, col_adjusted))
                         grid[row_adjusted][col_adjusted] = 0
 
-                    if tile.objects:  # (obj, offset)
+                    if tile.objects:
                         for obj, offset in tile.objects:
                             if obj in [key for key, value in EDITOR_DATA.items() if value['style'] == 'robot']:  # robot
                                 layers['robot'][(int(x + offset.x), int(y + offset.y))] = obj
@@ -189,7 +176,6 @@ class Editor:
                 else:
                     return layers, grid, start_coords, end_coords
 
-    # input
     def event_loop(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -210,7 +196,6 @@ class Editor:
             self.menu_click(event)
 
     def pan_input(self, event):
-        # middle mouse button pressed / released
         if event.type == pygame.MOUSEBUTTONDOWN and mouse_buttons()[1]:
             self.pan_active = True
             self.pan_offset = vector(mouse_pos()) - self.origin
@@ -230,7 +215,6 @@ class Editor:
             for sprite in self.canvas_objects:
                 sprite.pan_pos(self.origin)
 
-        # panning update
         if self.pan_active:
             self.origin = vector(mouse_pos()) - self.pan_offset
 
@@ -368,12 +352,10 @@ class Editor:
         button_hover_color = pygame.Color('gray')
         button_text_color = pygame.Color('black')
 
-        # Popup and option rects
         popup_rect = pygame.Rect(0, 0, menu_width, menu_height)
         popup_rect.center = self.display_surface.get_rect().center
         x_button_rect = pygame.Rect(popup_rect.right - 40, popup_rect.top + 5, 30, 30)
 
-        # Calculate positions for options
         option_rects = []
         for i in range(len(options)):
             option_bg_rect = pygame.Rect(popup_rect.left + 20, popup_rect.top + 40 + i * option_height, menu_width - 40,
@@ -403,13 +385,11 @@ class Editor:
             pygame.draw.rect(self.display_surface, bg_color, popup_rect)
             pygame.draw.rect(self.display_surface, text_color, popup_rect, 2)
 
-            # Draw the 'X' button
             x_button_color = button_hover_color if x_button_rect.collidepoint(mouse_pos) else button_color
             pygame.draw.rect(self.display_surface, x_button_color, x_button_rect)
             x_text_surface = button_font.render("X", True, button_text_color)
             self.display_surface.blit(x_text_surface, (x_button_rect.x + 7, x_button_rect.y + 3))
 
-            # Draw the options
             for i, option_rect in enumerate(option_rects):
                 option_color = color_active if option_rect.collidepoint(mouse_pos) else color_passive
                 pygame.draw.rect(self.display_surface, option_color, option_rect, border_radius=10)
@@ -466,9 +446,9 @@ class Editor:
 
         for row, _ in enumerate(grid):
             for col, _ in enumerate(grid[row]):
-                if grid[row][col] == 0 and [row, col] not in end_coords:  # wall
+                if grid[row][col] == 0 and [row, col] not in end_coords:
                     self.canvas_data[(col, row)] = CanvasTile(2)
-                elif grid[row][col] == 0 and [row, col] in end_coords:  # table
+                elif grid[row][col] == 0 and [row, col] in end_coords:
                     self.canvas_data[(col, row)] = CanvasTile(3)
 
     def clear(self):
@@ -498,12 +478,10 @@ class Editor:
     def canvas_remove(self):
         if mouse_buttons()[2] and not self.menu.rect_bottom.collidepoint(mouse_pos()) and \
                 not self.menu.rect_top.collidepoint(mouse_pos()) and not self.disable:
-            # delete objects
             selected_object = self.mouse_on_object()
             if selected_object and not self.object_drag_active:
                 selected_object.kill()
 
-            # delete tiles
             if self.canvas_data:
                 current_cell = self.get_current_cell()
                 if current_cell in self.canvas_data:
@@ -525,7 +503,6 @@ class Editor:
                     sprite.drag_end(self.origin)
                     self.object_drag_active = False
 
-    # drawing
     def draw_tile_lines(self):
         cols = WIDTH // TILE_SIZE
         rows = HEIGHT // TILE_SIZE
@@ -591,11 +568,9 @@ class Editor:
                     surf = self.preview_surfs[self.selection_index].copy()
                     surf.set_alpha(200)
 
-                    # tile
                     if type_dict[self.selection_index] == 'tile':
                         current_cell = self.get_current_cell()
                         rect = surf.get_rect(topleft=self.origin + vector(current_cell) * TILE_SIZE)
-                    # object
                     else:
                         current_cell = self.get_current_cell()
                         rect = surf.get_rect(topleft=self.origin + vector(current_cell) * TILE_SIZE)
@@ -603,7 +578,6 @@ class Editor:
                 else:
                     pass
 
-    # update
     def run(self, dt):
         self.event_loop()
         # updating
@@ -614,7 +588,6 @@ class Editor:
         self.display_surface.fill("grey")
         self.draw_level()
         self.draw_tile_lines()
-        pygame.draw.circle(self.display_surface, "red", self.origin, 10)
         self.preview()
         self.menu.display(self.selection_index)
 
@@ -622,19 +595,14 @@ class Editor:
 class CanvasTile:
     def __init__(self, tile_id, offset=vector()):
 
-        # terrain
-
         self.is_empty = False
         self.has_wall = False
         self.wall_neighbors = []
 
-        # obstacle
         self.has_obstacle = False
 
-        # robots
         self.robot = None
 
-        # objects
         self.objects = []
 
         self.add_id(tile_id, offset)
@@ -645,8 +613,6 @@ class CanvasTile:
             self.has_wall = True
         elif options[tile_id] == 'obstacle':
             self.has_obstacle = True
-        # elif options[tile_id] == 'robot':
-        #     self.robot = tile_id
         else:
             if (tile_id, offset) not in self.objects:
                 self.objects.append((tile_id, offset))
@@ -672,14 +638,12 @@ class CanvasObject(pygame.sprite.Sprite):
         super().__init__(group)
         self.tile_id = tile_id
 
-        # animation
         self.frames = frames
         self.frame_index = 0
 
         self.image = pygame.image.load('graphics/robot_player.png').convert_alpha()
         self.rect = self.image.get_rect(topleft=pos)
 
-        # movement
         self.distance_to_origin = vector(self.rect.topleft) - origin
         self.selected = False
 

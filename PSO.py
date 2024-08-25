@@ -1,12 +1,14 @@
+from tkinter import messagebox
+import tkinter as tk
+
+
 import numpy as np
-import random
 
 
 def is_adjacent(p1, p2):
     return np.all(np.abs(p1 - p2) == [1, 0]) or np.all(np.abs(p1 - p2) == [0, 1])
 
 
-# Particle class
 class Particle:
     def __init__(self, start, targets, obstacles, grid_width, grid_height, num_waypoints):
         self.targets = targets
@@ -42,51 +44,62 @@ class Particle:
                 if tuple(next_position) not in self.obstacles:
                     path.append(next_position)
                     break
-        return np.array(path, dtype=np.int32)  # Ensure path is integer type
+        return np.array(path, dtype=np.int32)
 
     def fitness(self):
         path = np.vstack([np.round(self.position).astype(int)])
 
         # Penalty for paths that intersect obstacles
-        obstacle_penalty = sum([float('inf') if tuple(coord) in self.obstacles else 0 for coord in path])
+        obstacle_penalty = sum(
+            [float('inf') if tuple(coord) in self.obstacles or tuple(coord) in self.targets else 0 for coord in path])
 
-        # Penalty for revisiting nodes
-        unnecessary_node_penalty = 0
-        visited_nodes = {}
-        for coord in path:
-            coord_tuple = tuple(coord)
-            if coord_tuple in visited_nodes:
-                visited_nodes[coord_tuple] += 1
-
-                # Check if this revisit is necessary (adjacent to any target)
-                necessary_backtrack = any(is_adjacent(coord, target) for target in self.targets)
-
-                # Apply penalty if revisiting a node unnecessarily
-                if not necessary_backtrack:
-                    unnecessary_node_penalty += 10000  # Penalize unnecessary revisits
-            else:
-                visited_nodes[coord_tuple] = 1
-
-        # Penalty for revisiting waypoints or circular paths
-        visited_segments = set()
-        circular_penalty = 0
-        for i in range(len(path) - 1):
-            segment = tuple(sorted([tuple(path[i]), tuple(path[i + 1])]))
-            if segment in visited_segments:
-                circular_penalty += 3000  # Large penalty for revisiting segments
-            visited_segments.add(segment)
-
-        # Penalty for not visiting all targets
-        target_penalty = 0
-        visited_targets = set()
+        unvisited_targets = set()
         for i in range(len(path)):
             for target in self.targets:
-                if np.array_equal(path[i], target):
-                    visited_targets.add(tuple(target))
-        if len(visited_targets) < len(self.targets):
-            target_penalty += 1e6  # Large penalty for missing targets\
+                for direction in ((-1, 0), (1, 0), (0, 1), (0, -1)):
+                    if [target[1] + direction[1], target[0] + direction[0]] not in self.obstacles and not \
+                            (path[i] == [target[1] + direction[1], target[0] + direction[0]]).all():
+                        unvisited_targets.add(tuple(target))
 
-        unvisited_target_penalty = 0
+        distance_cost = np.sum([np.linalg.norm(path - target, axis=1).min() for target in unvisited_targets])
+
+        # Penalty for revisiting nodes
+        # unnecessary_node_penalty = 0
+        # visited_nodes = {}
+        # for coord in path:
+        #     coord_tuple = tuple(coord)
+        #     if coord_tuple in visited_nodes:
+        #         visited_nodes[coord_tuple] += 1
+        #
+        #         # Check if this revisit is necessary (adjacent to any target)
+        #         necessary_backtrack = any(is_adjacent(coord, target) for target in self.targets)
+        #
+        #         # Apply penalty if revisiting a node unnecessarily
+        #         if not necessary_backtrack:
+        #             unnecessary_node_penalty += 10000  # Penalize unnecessary revisits
+        #     else:
+        #         visited_nodes[coord_tuple] = 1
+
+        # Penalty for revisiting waypoints or circular paths
+        # visited_segments = set()
+        # circular_penalty = 0
+        # for i in range(len(path) - 1):
+        #     segment = tuple(sorted([tuple(path[i]), tuple(path[i + 1])]))
+        #     if segment in visited_segments:
+        #         circular_penalty += 3000  # Large penalty for revisiting segments
+        #     visited_segments.add(segment)
+
+        # Penalty for not visiting all targets
+        # target_penalty = 0
+        # visited_targets = set()
+        # for i in range(len(path)):
+        #     for target in self.targets:
+        #         if np.array_equal(path[i], target):
+        #             visited_targets.add(tuple(target))
+        # if len(visited_targets) < len(self.targets):
+        #     target_penalty += 1e6  # Large penalty for missing targets\
+
+        # unvisited_target_penalty = 0
         # for i in range(len(path)):
         #     # Unvisited target penalty (sum of Manhattan distances to unvisited targets)
         #     last_node = path[-1]
@@ -95,7 +108,7 @@ class Particle:
         #         manhattan_distance = np.abs(last_node[0] - target[0]) + np.abs(last_node[1] - target[1])
         #         unvisited_target_penalty += manhattan_distance * 1000  # Add a significant penalty based on distance
 
-        early_target_reward = 0
+        # early_target_reward = 0
         # for i in range(len(path)):
         #     if tuple(path[i]) in [tuple(target) for target in self.targets]:
         #         early_target_reward += 2000 / (self.num_waypoints - i + 1)
@@ -117,10 +130,10 @@ class Particle:
         #     smoothness_penalty += angle_diff * 1000  # Larger penalty for sharp turns
 
         # Deviation penalty (minimize distance from targets)
-        deviation_penalty = np.sum([np.linalg.norm(path - target, axis=1).min() for target in self.targets]) * 500
+        # deviation_penalty = np.sum([np.linalg.norm(path - target, axis=1).min() for target in self.targets]) * 500
 
         # Penalty for direction deviation
-        direction_penalty = 0
+        # direction_penalty = 0
         # for i in range(1, len(path)):
         #     prev_node = path[i - 1]
         #     curr_node = path[i]
@@ -151,39 +164,40 @@ class Particle:
         #     direction_penalty += movement_angle_cost
 
         # Deviation from centroid penalty
-        centroid = np.mean(self.targets, axis=0)
-        centroid_penalty = 0
-        distance_from_targets_penalty = 0
-        for i in range(1, len(path)):
-            current_node = path[i]
-            previous_node = path[i - 1]
+        # centroid = np.mean(self.targets, axis=0)
+        # centroid_penalty = 0
+        # distance_from_targets_penalty = 0
+        # for i in range(1, len(path)):
+        #     current_node = path[i]
+        #     previous_node = path[i - 1]
+        #
+        #     # Calculate distance from previous node to centroid
+        #     dist_to_centroid_prev = np.linalg.norm(previous_node - centroid)
+        #     dist_to_centroid_curr = np.linalg.norm(current_node - centroid)
+        #
+        #     # Penalize if moving away from centroid
+        #     if dist_to_centroid_curr > dist_to_centroid_prev:
+        #         centroid_penalty += (dist_to_centroid_curr - dist_to_centroid_prev) * 500
+        #
+        #     # Find the closest target for the previous and current nodes
+        #     dist_to_nearest_target_prev = min(np.linalg.norm(previous_node - target) for target in self.targets)
+        #     dist_to_nearest_target_curr = min(np.linalg.norm(current_node - target) for target in self.targets)
+        #
+        #     # Penalize if moving away from the closest target
+        #     if dist_to_nearest_target_curr > dist_to_nearest_target_prev:
+        #         distance_from_targets_penalty += (dist_to_nearest_target_curr - dist_to_nearest_target_prev) * 500
 
-            # Calculate distance from previous node to centroid
-            dist_to_centroid_prev = np.linalg.norm(previous_node - centroid)
-            dist_to_centroid_curr = np.linalg.norm(current_node - centroid)
-
-            # Penalize if moving away from centroid
-            if dist_to_centroid_curr > dist_to_centroid_prev:
-                centroid_penalty += (dist_to_centroid_curr - dist_to_centroid_prev) * 500
-
-            # Find the closest target for the previous and current nodes
-            dist_to_nearest_target_prev = min(np.linalg.norm(previous_node - target) for target in self.targets)
-            dist_to_nearest_target_curr = min(np.linalg.norm(current_node - target) for target in self.targets)
-
-            # Penalize if moving away from the closest target
-            if dist_to_nearest_target_curr > dist_to_nearest_target_prev:
-                distance_from_targets_penalty += (dist_to_nearest_target_curr - dist_to_nearest_target_prev) * 500
-
-        return obstacle_penalty + target_penalty + unnecessary_node_penalty + deviation_penalty \
-            + unvisited_target_penalty + circular_penalty + early_target_reward + direction_penalty + centroid_penalty \
-            + distance_from_targets_penalty
+        # return obstacle_penalty + target_penalty + unnecessary_node_penalty + deviation_penalty \
+        #     + unvisited_target_penalty + circular_penalty + early_target_reward + direction_penalty + centroid_penalty \
+        #     + distance_from_targets_penalty
+        return distance_cost + obstacle_penalty - 100 * (len(self.targets) - len(unvisited_targets))
 
     def update(self, global_best_position):
         r1, r2 = np.random.rand(), np.random.rand()
         self.velocity = (self.w * self.velocity +
                          self.c1 * r1 * (self.best_position - self.position) +
                          self.c2 * r2 * (global_best_position - self.position))
-        self.position = np.round(self.position + self.velocity).astype(int)  # Ensure integer type
+        self.position = np.round(self.position + self.velocity).astype(int)
 
         self.position[1:] = np.clip(self.position[1:], 0, [self.grid_width - 1, self.grid_height - 1])
         self.position[0] = self.start
@@ -227,60 +241,90 @@ def find_obstacles(grid, targets):
     return obstacles, len(grid), len(grid[0])
 
 
-def find_path_pso(grid, start, targets, initial_max_waypoints=2, max_waypoints=5, num_particles=30, max_iterations=100):
-    obstacles, grid_height, grid_width = find_obstacles(grid, targets)
-    num_waypoints = initial_max_waypoints
-    found_path = False
-    targets = [(y, x) for x, y in targets]
+def find_path_pso(grid, start, targets, initial_max_waypoints=2, max_waypoints=5, max_iterations=100):
+    try:
+        obstacles, grid_height, grid_width = find_obstacles(grid, targets)
+        num_waypoints = initial_max_waypoints
+        found_path = False
+        targets = [(y, x) for x, y in targets]
 
-    while not found_path and num_waypoints <= max_waypoints:
-        print(f"Searching with {num_waypoints} waypoints...")
+        while not found_path and num_waypoints <= max_waypoints:
+            print(f"Searching with {num_waypoints} waypoints...")
 
-        # Initialize particles
-        particles = [Particle(start, targets, obstacles, grid_width, grid_height, num_waypoints) for _ in
-                     range(num_particles)]
-        global_best_position = np.zeros_like(particles[0].position, dtype=np.int32)
-        global_best_fitness = float('inf')
+            particles = []
+            while len(particles) < 50 * num_waypoints:
+                a = Particle(start, targets, obstacles, grid_width, grid_height, num_waypoints)
+                if a not in particles:
+                    particles.append(a)
 
-        # PSO main loop
-        for _ in range(max_iterations):
-            for particle in particles:
-                particle.update(global_best_position)
+            global_best_position = np.zeros_like(particles[0].position, dtype=np.int32)
+            global_best_fitness = float('inf')
 
-                if particle.best_fitness < global_best_fitness:
-                    global_best_fitness = particle.best_fitness
-                    global_best_position = particle.best_position.copy()
+            # PSO main loop
+            for _ in range(max_iterations):
+                for particle in particles:
+                    particle.update(global_best_position)
 
-        best_path = np.vstack([np.round(global_best_position).astype(int)])
-        best_path_coordinates = [(int(x), int(y)) for x, y in best_path]
-        print("Best path (x, y) coordinates:")
-        for coord in best_path_coordinates:
-            print(coord)
-        visited_targets = set(tuple(target) for target in targets)
-        for coord in best_path:
-            visited_targets.discard(tuple(coord))
-        if not visited_targets:
-            found_path = True
+                    if particle.best_fitness < global_best_fitness:
+                        global_best_fitness = particle.best_fitness
+                        global_best_position = particle.best_position.copy()
 
-        if not found_path:
-            num_waypoints += 1
+            best_path = np.vstack([np.round(global_best_position).astype(int)])
+            best_path_coordinates = [(int(x), int(y)) for x, y in best_path]
+            print("Best path (x, y) coordinates:")
+            print("Fitness:", global_best_fitness)
+            for coord in best_path_coordinates:
+                print(coord)
+            visited_targets = set(tuple(target) for target in targets)
+            helper = {}
+            for target in targets:
+                for direction in ((-1, 0), (1, 0), (0, 1), (0, -1)):
+                    new_coord = (target[0] + direction[0], target[1] + direction[1])
+                    if new_coord not in obstacles:
+                        if target not in helper:
+                            helper[target] = []
 
-    if found_path:
-        best_path = np.vstack([np.round(global_best_position).astype(int)])
-        best_path_coordinates = [(int(x), int(y)) for x, y in best_path]
-        print("Best path (x, y) coordinates:")
-        for coord in best_path_coordinates:
-            print(coord)
-        path_without_targets = [coord for coord in best_path_coordinates if coord not in targets]
+                        helper[target].append([target[0] + direction[0], target[1] + direction[1]])
+            for coord in best_path:
+                for key, value_list in helper.items():
+                    if [coord[0], coord[1]] in value_list:
+                        visited_targets.discard(key)
+                        break
+            if not visited_targets:
+                found_path = True
 
-        last_target_index = max(
-            best_path_coordinates.index(target) for target in targets if target in best_path_coordinates)
-        print(last_target_index)
-        path_without_targets = path_without_targets[:last_target_index]
+            if not found_path:
+                num_waypoints += 1
 
-        return path_without_targets
-    else:
-        print("No path found with the given waypoints limit.")
+        if found_path:
+            best_path = np.vstack([np.round(global_best_position).astype(int)])
+            best_path_coordinates = [(int(x), int(y)) for x, y in best_path]
+            print("Best path (x, y) coordinates:")
+            for coord in best_path_coordinates:
+                print(coord)
 
-# Run pathfinding with multiple targets
-# find_path_pso(grid,start, targets, initial_max_waypoints=18, max_waypoints=grid_size * grid_size, num_particles=400,max_iterations=500)
+            surrounding_indices = []
+
+            for target in targets:
+                for direction in ((-1, 0), (1, 0), (0, 1), (0, -1)):
+                    new_coord = (target[0] + direction[0], target[1] + direction[1])
+                    if new_coord in best_path_coordinates and new_coord not in obstacles:
+                        surrounding_indices.append(best_path_coordinates.index(new_coord))
+
+            if surrounding_indices:
+                last_target_index = max(surrounding_indices)
+            else:
+                last_target_index = None
+
+            best_path = best_path[:last_target_index + 1]
+
+            return best_path
+        else:
+            raise ValueError("No path found with the given waypoints limit.")
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("Error", str(e))
+        return None
